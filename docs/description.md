@@ -1,7 +1,8 @@
 # Latency attack
 ## 目前暂定的思路和难点
-暂定的思路：对图片分格，每个各自内通过PGD优化的策略，使其置信度增大，出现被误识别的物体。
-难点：无法获得模型的梯度信息。
+暂定的思路：
++ 我先对我的图片进行正向传播，获得Boxes位置信息和对不同类别的概率。
++ 然后我将Boxes信息加某个类别作为标签，计算loss，通过PGD攻击不断提高某个类别的置信度，直到该置信度达到阈值
 ## 项目背景简介
 我有一个项目，要实现latency_attack
 项目文件夹内有文件夹code,data,model,docs
@@ -15,6 +16,7 @@
     - predict.py 对图片目标进行预测
     - time_test.py 检测延时攻击的效果
     - utils.py一些工具函数
+    - getBoxes.py 获取图像预测框信息，置信度信息
 
 data/img目录下有测试用的图片
 model 里面是用来放yolo11.pt模型的
@@ -27,74 +29,6 @@ import numpy as np
 import cv2
 from ultralytics import YOLO
 from config import MODEL_PATH,IMAGE_PATH, OUTPUT_PATH, CONF_THRESHOLD, GRID_SIZE, LAMBDA, ATTACK_ITER, EPSILON
-from utils import split_image, compute_l2_distance
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = YOLO(MODEL_PATH).to(device)
-
-# 预处理图片
-def preprocess_image(image, img_size=640):
-    # 确保尺寸为32的倍数
-    h, w, _ = image.shape
-    new_h = (h // 32) * 32
-    new_w = (w // 32) * 32
-    resized_image = cv2.resize(image, (new_w, new_h))
-
-    # 转为torch tensor并归一化
-    image_tensor = torch.from_numpy(resized_image).float().permute(2, 0, 1).unsqueeze(0).to(device)
-    return image_tensor / 255.0, resized_image
-
-def latency_attack_pgd():
-    image = cv2.imread(IMAGE_PATH)
-    orig_image = image.copy()
-
-    # 获取图片的网格分块
-    grids = split_image(image, GRID_SIZE)
-
-    for idx, (x1, y1, x2, y2, cell) in enumerate(grids):
-        print(f"Attacking grid {idx+1}/{len(grids)}")
-
-        perturbation = np.zeros_like(cell, dtype=np.float32)
-
-        for iter in range(ATTACK_ITER):
-            attacked_image = image.copy()
-            attacked_image[y1:y2, x1:x2] = np.clip(cell + perturbation, 0, 255).astype(np.uint8)
-
-            # 预处理图片并转换为tensor
-            image_tensor, resized_image = preprocess_image(attacked_image)
-
-            # 获取模型预测
-            results = model(image_tensor, verbose=False)
-            detections = results[0].boxes.data.cpu().numpy()
-
-            max_conf = 0
-            for det in detections:
-                x1_, y1_, x2_, y2_, conf, cls = det[:6]
-                cx, cy = (x1_ + x2_) / 2, (y1_ + y2_) / 2
-                if x1 <= cx <= x2 and y1 <= cy <= y2:
-                    max_conf = max(max_conf, conf)
-
-            if max_conf > CONF_THRESHOLD:
-                print(f"Grid {idx+1}: conf {max_conf:.3f} reached at iter {iter+1}")
-                break
-
-            # 模拟置信度梯度方向（真实项目应用目标检测回传梯度）
-            grad = np.sign(np.random.randn(*cell.shape))  
-            perturbation += EPSILON * grad
-            perturbation = np.clip(perturbation, -20, 20)
-
-        image[y1:y2, x1:x2] = np.clip(cell + perturbation, 0, 255).astype(np.uint8)
-
-    # 保存攻击后的图片
-    os.makedirs(OUTPUT_PATH, exist_ok=True)
-    cv2.imwrite(os.path.join(OUTPUT_PATH, "attacked_0001_pgd.jpg"), image)
-
-    # 计算L2距离
-    l2_dist = compute_l2_distance(orig_image, image)
-    print(f"L2 distance: {l2_dist:.2f}")
-
-if __name__ == "__main__":
-    latency_attack_pgd()
 ```
 ### config.py
 ```python
@@ -201,19 +135,71 @@ if __name__ == "__main__":
 import numpy as np
 import cv2
 
-def split_image(image, grid_size):
-    h, w, _ = image.shape
-    grids = []
-    for y in range(0, h, grid_size):
-        for x in range(0, w, grid_size):
-            x2, y2 = min(x+grid_size, w), min(y+grid_size, h)
-            cell = image[y:y2, x:x2].copy()
-            grids.append((x, y, x2, y2, cell))
-    return grids
-
 def compute_l2_distance(img1, img2):
     diff = (img1.astype(np.float32) - img2.astype(np.float32)).flatten()
     return np.linalg.norm(diff)
 ```
+### getBoxes.py
+```python
+from ultralytics import YOLO
+import cv2
+from config import MODELV8N_PATH
+
+# 加载模型
+model = YOLO(MODELV8N_PATH)
+
+def get_boxes_info(image_path, conf_threshold=0):
+    image = cv2.imread(image_path)
+    results = model(image, verbose=False, conf=0.0001)[0]
+
+    boxes_info = []
+
+    for box in results.boxes:
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        conf = box.conf[0].item()
+        cls = int(box.cls[0].item())
+        label = results.names[cls]
+
+        if conf >= 0:
+            boxes_info.append({
+                "box": (x1, y1, x2, y2),
+                "conf": conf,
+                "class_id": cls,
+                "label": label
+            })
+
+    return boxes_info
+```
+> getBoxes使用方法
+```python
+from ultralytics import YOLO
+import cv2
+from config import MODELV8N_PATH
+
+# 加载模型
+model = YOLO(MODELV8N_PATH)
+
+def get_boxes_info(image_path, conf_threshold=0):
+    image = cv2.imread(image_path)
+    results = model(image, verbose=False, conf=0.0001)[0]
+
+    boxes_info = []
+
+    for box in results.boxes:
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        conf = box.conf[0].item()
+        cls = int(box.cls[0].item())
+        label = results.names[cls]
+
+        if conf >= 0:
+            boxes_info.append({
+                "box": (x1, y1, x2, y2),
+                "conf": conf,
+                "class_id": cls,
+                "label": label
+            })
+
+    return boxes_info
+```
 ### 诉求
-写一个getGrad.py函数，获得模型的梯度信息，如果你需要相关的库函数的具体描述，请告诉我去哪里找到相关的信息
+一步步实现我的思路，首先我需要我给出一个Loss，获取图像对它的梯度

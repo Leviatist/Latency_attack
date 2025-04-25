@@ -1,74 +1,75 @@
-import os
 import torch
-import numpy as np
 import cv2
+import numpy as np
 from ultralytics import YOLO
-from config import MODEL_PATH,IMAGE_PATH, OUTPUT_PATH, CONF_THRESHOLD, GRID_SIZE, LAMBDA, ATTACK_ITER, EPSILON
-from utils import split_image, compute_l2_distance
+from config import MODELV8N_PATH, IMAGE_PATH, OUTPUT_PATH
+from getBoxes import get_boxes_info  # 导入你提供的get_boxes_info方法
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = YOLO(MODEL_PATH).to(device)
+# 加载YOLO模型
+model = YOLO(MODELV8N_PATH)
 
-# 预处理图片
-def preprocess_image(image, img_size=640):
-    # 确保尺寸为32的倍数
-    h, w, _ = image.shape
-    new_h = (h // 32) * 32
-    new_w = (w // 32) * 32
-    resized_image = cv2.resize(image, (new_w, new_h))
+# 读取图像
+image = cv2.imread(IMAGE_PATH)  # 修改为你的图像路径
 
-    # 转为torch tensor并归一化
-    image_tensor = torch.from_numpy(resized_image).float().permute(2, 0, 1).unsqueeze(0).to(device)
-    return image_tensor / 255.0, resized_image
+# 调整图像大小，使其适应YOLO的输入要求 (640x640)
+image_resized = cv2.resize(image, (640, 640))  # 调整图像大小
+image_tensor = torch.tensor(image_resized).float().permute(2, 0, 1) / 255.0  # 归一化，CHW格式
+image_tensor.requires_grad = True  # 允许计算梯度
 
-def latency_attack_pgd():
-    image = cv2.imread(IMAGE_PATH)
-    orig_image = image.copy()
+# PGD攻击参数
+EPSILON = 0.03  # 每步扰动的最大值
+ATTACK_ITER = 40  # 攻击的迭代次数
+CONF_THRESHOLD = 0.8  # 置信度阈值
 
-    # 获取图片的网格分块
-    grids = split_image(image, GRID_SIZE)
+# 获取预测框信息
+boxes_info = get_boxes_info(IMAGE_PATH)
 
-    for idx, (x1, y1, x2, y2, cell) in enumerate(grids):
-        print(f"Attacking grid {idx+1}/{len(grids)}")
+# 目标框的类别和置信度最大化
+def pgd_attack(image_tensor, model, boxes_info, epsilon=EPSILON, attack_iter=ATTACK_ITER):
+    """
+    使用PGD攻击最大化每个框的置信度
+    """
+    # 获取目标框的类别和置信度
+    target_class = boxes_info[0]["class_id"]  # 这里只取第一个框的类别作为目标，你可以扩展为多个框
+    target_conf = boxes_info[0]["conf"]
+    
+    # 将模型输入到图像
+    for _ in range(attack_iter):
+        loss=0
+        
+        # 进行前向传播，获得预测结果
+        results = model(image_tensor.unsqueeze(0),conf=0.0001)[0]
+        print("image_tensor.grad_fun:",image_tensor.grad_fn)
 
-        perturbation = np.zeros_like(cell, dtype=np.float32)
+        for box in results.boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            conf = box.conf[0].item()
+            cls = int(box.cls[0].item())
+            label = results.names[cls]
+            conf = torch.tensor(conf, dtype=torch.float32)
+            print("conf:",conf.grad_fn)
 
-        for iter in range(ATTACK_ITER):
-            attacked_image = image.copy()
-            attacked_image[y1:y2, x1:x2] = np.clip(cell + perturbation, 0, 255).astype(np.uint8)
+            loss -=  -torch.log(conf)
 
-            # 预处理图片并转换为tensor
-            image_tensor, resized_image = preprocess_image(attacked_image)
+        # 反向传播计算梯度
+        image_tensor.grad = None  # 清除以前的梯度
+        loss.backward()
 
-            # 获取模型预测
-            results = model(image_tensor, verbose=False)
-            detections = results[0].boxes.data.cpu().numpy()
+        # 使用PGD更新图像
+        with torch.no_grad():
+            # 给图像添加扰动
+            image_tensor += epsilon * image_tensor.grad.sign()
+            
+            # 限制扰动的范围，使图像保持在合法的像素范围内
+            image_tensor = torch.clamp(image_tensor, 0, 1)
 
-            max_conf = 0
-            for det in detections:
-                x1_, y1_, x2_, y2_, conf, cls = det[:6]
-                cx, cy = (x1_ + x2_) / 2, (y1_ + y2_) / 2
-                if x1 <= cx <= x2 and y1 <= cy <= y2:
-                    max_conf = max(max_conf, conf)
+    return image_tensor
 
-            if max_conf > CONF_THRESHOLD:
-                print(f"Grid {idx+1}: conf {max_conf:.3f} reached at iter {iter+1}")
-                break
+# 进行PGD攻击
+attacked_image_tensor = pgd_attack(image_tensor, model, boxes_info)
 
-            # 模拟置信度梯度方向（真实项目应用目标检测回传梯度）
-            grad = np.sign(np.random.randn(*cell.shape))  
-            perturbation += EPSILON * grad
-            perturbation = np.clip(perturbation, -20, 20)
+# 将攻击后的图像转换为标准格式并保存
+attacked_image = attacked_image_tensor.cpu().numpy() * 255  # 转回HWC格式
+attacked_image = attacked_image.astype(np.uint8)
 
-        image[y1:y2, x1:x2] = np.clip(cell + perturbation, 0, 255).astype(np.uint8)
-
-    # 保存攻击后的图片
-    os.makedirs(OUTPUT_PATH, exist_ok=True)
-    cv2.imwrite(os.path.join(OUTPUT_PATH, "attacked_0001_pgd.jpg"), image)
-
-    # 计算L2距离
-    l2_dist = compute_l2_distance(orig_image, image)
-    print(f"L2 distance: {l2_dist:.2f}")
-
-if __name__ == "__main__":
-    latency_attack_pgd()
+cv2.imwrite(OUTPUT_PATH, attacked_image)  # 保存攻击后的图像
