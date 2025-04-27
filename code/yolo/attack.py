@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from config import MODELV8N_PATH, IMAGE_PATH, OUTPUT_PATH
-from getBoxes import get_boxes_info  # 导入你提供的get_boxes_info方法
+from Project.Active.Latency_attack.code.yolo.boxes import get_boxes_info  # 导入你提供的get_boxes_info方法
 
 # 加载YOLO模型
 model = YOLO(MODELV8N_PATH)
