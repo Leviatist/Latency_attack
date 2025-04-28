@@ -1,7 +1,8 @@
 import torch
 import cv2
+import pandas as pd
 from ultralytics import YOLO
-from config import MODELV8N_PATH
+from config import MODELV8N_PATH,CSV_PATH
 
 # 加载模型
 model = YOLO(MODELV8N_PATH)
@@ -24,5 +25,23 @@ def get_raw_output(image_path):
 
     with torch.set_grad_enabled(True):
         preds = model.model(im_tensor)  # 手动forward
+    
+    # 先 squeeze 去掉 batch 维度
+    preds = preds.squeeze(0)  # 现在 shape 是 [84, 8400]
+
+    # 转置一下，让每一行是一个预测点
+    preds = preds.permute(1, 0)  # 现在 shape 是 [8400, 84]
 
     return preds[0], im_tensor
+
+def predsToCsv(preds,csvPath):
+    # 生成列名
+    columns = ['x', 'y', 'w', 'h'] + [f'conf{i}' for i in range(1, 81)]
+
+    # 转成 pandas dataframe
+    df = pd.DataFrame(preds.detach().cpu().numpy(), columns=columns)
+
+    # 保存到本地，或者直接使用
+    df.to_csv(csvPath, index=False)
+
+    print(df.head())

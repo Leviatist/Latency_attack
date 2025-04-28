@@ -1,2 +1,4 @@
-model/yolo11x.pt
-model/yolov8n.pt
+/model/yolo11x.pt
+/model/yolov8n.pt
+/data/csv/preds.csv
+/code/yolo/__pycache__/
