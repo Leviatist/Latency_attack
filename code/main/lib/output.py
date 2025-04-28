@@ -2,7 +2,7 @@ import torch
 import cv2
 import pandas as pd
 from ultralytics import YOLO
-from config import MODELV8N_PATH,CSV_PATH
+from lib.config import MODELV8N_PATH
 
 # 加载模型
 model = YOLO(MODELV8N_PATH)
@@ -15,7 +15,7 @@ def simple_preprocess(image):
     image = image / 255.0  # normalize to 0-1
     return image
 
-def get_raw_output(image_path):
+def get_raw_output_img(image_path):
     # 读取图片
     image = cv2.imread(image_path)
     im_tensor = simple_preprocess(image)  # 手动处理成tensor
@@ -24,7 +24,7 @@ def get_raw_output(image_path):
     im_tensor.requires_grad_(True)  # 开启梯度
 
     with torch.set_grad_enabled(True):
-        preds = model.model(im_tensor)  # 手动forward
+        preds = model.model(im_tensor)[0]  # 手动forward
     
     # 先 squeeze 去掉 batch 维度
     preds = preds.squeeze(0)  # 现在 shape 是 [84, 8400]
@@ -32,7 +32,21 @@ def get_raw_output(image_path):
     # 转置一下，让每一行是一个预测点
     preds = preds.permute(1, 0)  # 现在 shape 是 [8400, 84]
 
-    return preds[0], im_tensor
+    return preds, im_tensor
+
+def get_raw_output_tensor(im_tensor):
+    im_tensor.requires_grad_(True)  # 开启梯度
+
+    with torch.set_grad_enabled(True):
+        preds = model.model(im_tensor)[0]  # 手动forward
+    
+    # 先 squeeze 去掉 batch 维度
+    preds = preds.squeeze(0)  # 现在 shape 是 [84, 8400]
+
+    # 转置一下，让每一行是一个预测点
+    preds = preds.permute(1, 0)  # 现在 shape 是 [8400, 84]
+
+    return preds, im_tensor
 
 def predsToCsv(preds,csvPath):
     # 生成列名

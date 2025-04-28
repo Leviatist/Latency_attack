@@ -1,11 +1,11 @@
 from ultralytics import YOLO
 
-from config import MODEL_PATH
+from lib.config import MODELV8N_PATH
 
-model = YOLO(MODEL_PATH)
+model = YOLO(MODELV8N_PATH)
 
-def detect_image(image):
-    results = model(image, verbose=False)
+def detect_image(image,conf=0.5):
+    results = model(image, verbose=False, conf=conf)
     detections = []
     for r in results:
         for box in r.boxes:
