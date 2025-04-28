@@ -1,10 +1,9 @@
 import cv2 
 from ultralytics import YOLO
-from config import MODEL_PATH, IMAGE_PATH, OUTPUT_PATH
+from config import MODELV8N_PATH, IMAGE_PATH, OUTPUT_PATH
 
-model = YOLO(MODEL_PATH)
-image_0 = cv2.imread(IMAGE_PATH)
-image_1 = cv2.imread(OUTPUT_PATH+ "attacked_0001_pgd.jpg")
+model = YOLO(MODELV8N_PATH)
+image = cv2.imread(IMAGE_PATH)
 
 def predict(chosen_model, img, classes=[], conf=0.3):
     if classes:
@@ -31,7 +30,7 @@ def predict_and_detect(chosen_model, img, classes=[], conf=0.5, rectangle_thickn
     return img, results, detected_labels  # 返回检测到的标签列表
 
 # 读取图片
-result_img, _, labels = predict_and_detect(model, image_1, conf=0.3)
+result_img, _, labels = predict_and_detect(model, image, conf=0.3)
 
 # 显示带标注的图片
 cv2.imshow("Image", result_img)
