@@ -1,4 +1,5 @@
 /model/yolo11x.pt
 /model/yolov8n.pt
+/data/labels
 /data/csv/preds.csv
 /code/yolo/__pycache__/
