@@ -19,4 +19,4 @@ if __name__ == "__main__":
     print("检测耗时对比：")
     test_detection_time(DUMMYIMG_PATH, "预热图", rounds)
     test_detection_time(ATKEDIMG_PATH, "攻击图", rounds)
-    test_detection_time(ORIGINIMG_PATH, "原图", rounds)
+    test_detection_time(ORIGINIMG_PATH, "原始图", rounds)
