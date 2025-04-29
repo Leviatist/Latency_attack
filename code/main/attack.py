@@ -1,5 +1,5 @@
 import torch
-from lib.config import IMAGE_PATH, OUTPUT_PATH
+from lib.config import ORIGINIMG_PATH, ATKEDIMG_PATH
 from lib.output import get_raw_output_img, get_raw_output_tensor
 from lib.loss import confidence_increase_loss
 from lib.utils import save_image_from_tensor
@@ -10,7 +10,7 @@ alpha = 2 / 255    # 每步走多远 (步长)
 num_steps = 1000     # 总步数
 
 # 读取原始图像和预测
-preds, im_tensor = get_raw_output_img(IMAGE_PATH)
+preds, im_tensor = get_raw_output_img(ORIGINIMG_PATH)
 
 # 保存原始图像备份
 original_im_tensor = im_tensor.clone().detach()
@@ -57,4 +57,4 @@ for step in range(num_steps):
 final_attack_img = im_tensor.detach()
 
 # 你可以保存 final_attack_img，或者直接用它去做后续检测
-save_image_from_tensor(final_attack_img, OUTPUT_PATH)
+save_image_from_tensor(final_attack_img, ATKEDIMG_PATH)
