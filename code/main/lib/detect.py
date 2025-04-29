@@ -4,7 +4,7 @@ from lib.config import MODELV8N_PATH
 
 model = YOLO(MODELV8N_PATH)
 
-def detect_image(image,conf=0.5):
+def detect_image(image,conf=0.3):
     results = model(image, verbose=False, conf=conf)
     detections = []
     for r in results:

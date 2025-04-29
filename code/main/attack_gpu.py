@@ -5,9 +5,13 @@ from lib.loss import confidence_increase_loss
 from lib.utils import save_image_from_tensor
 
 # 配置PGD攻击参数
-epsilon = 8 / 255  # 最大扰动 (标准图像范围是0-1，8/255是常见值)
-alpha = 2 / 255    # 每步走多远 (步长)
-num_steps = 1000     # 总步数
+epsilon = 8 / 255  # 最大扰动
+alpha = 2 / 255    # 步长
+num_steps = 200   # 总步数
+
+# 设置设备
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+print("Using device:", device)
 
 # 读取原始图像和预测
 preds, im_tensor = get_raw_output_img(IMAGE_PATH)

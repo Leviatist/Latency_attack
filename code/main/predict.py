@@ -36,13 +36,9 @@ result_img, _, labels = predict_and_detect(model, image, conf=0.3)
 cv2.imwrite(PREDICTED_PATH, result_img)
 # 输出检测到的类型标签
 print("Detected Labels:", labels)
-'''
 # 显示带标注的图片
 cv2.imshow("Image", result_img)
-cv2.imwrite("Project/Active/Latency_attack/data/Result", result_img)
-
-# 输出检测到的类型标签
-print("Detected Labels:", labels)
+'''
 
 cv2.waitKey(0)
 '''
