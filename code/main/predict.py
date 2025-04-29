@@ -1,10 +1,10 @@
 import cv2 
 from ultralytics import YOLO
-from lib.config import MODELV8N_PATH, IMAGE_PATH, OUTPUT_PATH, PREDICTED_PATH
+from lib.config import MODELV8N_PATH, ORIGINIMG_PATH, ATKEDIMG_PATH, PREDICTEDIMG_PATH
 
 model = YOLO(MODELV8N_PATH)
-# image = cv2.imread(IMAGE_PATH)
-image = cv2.imread(OUTPUT_PATH)
+image1 = cv2.imread(ORIGINIMG_PATH)
+image2 = cv2.imread(ATKEDIMG_PATH)
 
 def predict(chosen_model, img, classes=[], conf=0.3):
     if classes:
@@ -31,18 +31,15 @@ def predict_and_detect(chosen_model, img, classes=[], conf=0.5, rectangle_thickn
     return img, results, detected_labels  # 返回检测到的标签列表
 
 # 读取图片
-result_img, _, labels = predict_and_detect(model, image, conf=0.3)
-
-cv2.imwrite(PREDICTED_PATH, result_img)
+result_img1, _, labels1 = predict_and_detect(model, image1, conf=0.3)
+result_img2, _, labels2 = predict_and_detect(model, image2, conf=0.3)
 # 输出检测到的类型标签
-print("Detected Labels:", labels)
+print("ORIGIN Detected Labels:", labels1)
+print("ATKED Detected Labels:", labels2)
+
+cv2.imwrite(PREDICTEDIMG_PATH, result_img2)
+
 '''
 # 显示带标注的图片
 cv2.imshow("Image", result_img)
-cv2.imwrite("Project/Active/Latency_attack/data/Result", result_img)
-
-# 输出检测到的类型标签
-print("Detected Labels:", labels)
-
-cv2.waitKey(0)
 '''
